@@ -1,0 +1,62 @@
+name: Build RPMs
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force a build even if upstream versions did not change"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fcitx5-el-build
+  cancel-in-progress: false
+
+jobs:
+  mock-smoke-test:
+    name: Validate Mock on EL${{ matrix.el }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        el: ["9", "10"]
+    container:
+      image: rockylinux:${{ matrix.el }}
+      options: --privileged
+    steps:
+      - name: Install Mock and RPM build tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          dnf -y install epel-release
+          dnf -y install mock rpm-build rpmdevtools createrepo_c git jq
+          mock --version
+          rpmbuild --version
+
+      - name: Smoke-test RPM build root initialization
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [[ "${{ matrix.el }}" == "9" ]]; then
+            config="rocky+epel-9-x86_64"
+          else
+            config="rocky+epel-10-x86_64"
+          fi
+          mock -r "$config" --init
+          mock -r "$config" --chroot 'cat /etc/os-release'
+          mock -r "$config" --clean
+
+      - name: Upload diagnostic log on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p logs
+          mock -r "rocky+epel-${{ matrix.el }}-x86_64" --debug-config > "logs/mock-el${{ matrix.el }}.txt" 2>&1 || true
