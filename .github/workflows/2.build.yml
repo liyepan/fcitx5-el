@@ -1,0 +1,88 @@
+name: 2. Build AlmaLinux 10 RPM environment
+
+on:
+  workflow_call:
+    inputs:
+      versions_json:
+        description: "JSON object containing upstream repository tags"
+        required: true
+        type: string
+      release_tag:
+        description: "Release tag for this upstream snapshot"
+        required: true
+        type: string
+      force:
+        description: "Whether this run was forced manually"
+        required: false
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force the environment smoke test"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fcitx5-el-alma10-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    container:
+      image: almalinux:10
+      options: --privileged
+    steps:
+      - name: Show target OS
+        run: cat /etc/os-release
+
+      - name: Install RPM build tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          dnf -y --setopt=timeout=30 --setopt=retries=3 install \
+            dnf-plugins-core epel-release
+          dnf -y --setopt=timeout=30 --setopt=retries=3 install \
+            mock rpm-build rpmdevtools createrepo_c git jq tar gzip \
+            findutils diffutils coreutils
+          mock --version
+          rpmbuild --version
+
+      - name: Show available Mock configurations
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mock --list-chroots
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p logs
+          {
+            echo "=== OS ==="
+            cat /etc/os-release || true
+            echo "=== DNF repositories ==="
+            dnf repolist -v || true
+            echo "=== Mock version ==="
+            mock --version || true
+            echo "=== Available Mock configurations ==="
+            mock --list-chroots || true
+          } > logs/alma10-diagnostics.txt 2>&1
+
+      - name: Upload diagnostic log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alma10-diagnostics
+          path: logs/
+          if-no-files-found: warn
+          retention-days: 7
+
+      # Stage 2 only: validates the AlmaLinux 10 tooling environment.
+      # Actual Fcitx5 RPM builds and release publishing are not implemented yet.
