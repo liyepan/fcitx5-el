@@ -38,6 +38,23 @@ jobs:
       image: almalinux:10
       options: --privileged
     steps:
+      - name: Switch AlmaLinux repositories to Aliyun mirror
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # AlmaLinux 10 repo files use mirrorlist= plus a commented official baseurl.
+          # Keep GPG checks and repository definitions intact; only switch the endpoint.
+          sed -i.bak \
+            -e 's|^mirrorlist=https://mirrors\.almalinux\.org/|#mirrorlist=https://mirrors.almalinux.org/|' \
+            -e 's|^# baseurl=https://repo\.almalinux\.org/almalinux/|baseurl=https://mirrors.aliyun.com/almalinux/|' \
+            /etc/yum.repos.d/almalinux*.repo
+
+          echo "=== Active AlmaLinux base URLs ==="
+          grep -H -E '^(baseurl|mirrorlist)=' /etc/yum.repos.d/almalinux*.repo || true
+
+          dnf clean all
+          dnf -y --setopt=timeout=30 --setopt=retries=5 --setopt=max_parallel_downloads=10 makecache
+
       - name: Show target OS
         run: cat /etc/os-release
 
@@ -45,9 +62,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          dnf -y --setopt=timeout=30 --setopt=retries=3 install \
+          dnf -y --setopt=timeout=30 --setopt=retries=5 install \
             dnf-plugins-core epel-release
-          dnf -y --setopt=timeout=30 --setopt=retries=3 install \
+          dnf -y --setopt=timeout=30 --setopt=retries=5 install \
             mock rpm-build rpmdevtools createrepo_c git jq tar gzip \
             findutils diffutils
           mock --version
@@ -67,6 +84,8 @@ jobs:
           {
             echo "=== OS ==="
             cat /etc/os-release || true
+            echo "=== Repository configuration ==="
+            grep -H -E '^(baseurl|mirrorlist|metalink)=' /etc/yum.repos.d/*.repo || true
             echo "=== DNF repositories ==="
             dnf repolist -v || true
             echo "=== Mock version ==="
@@ -84,5 +103,5 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # Stage 2 only: validates the AlmaLinux 10 tooling environment.
-      # Actual Fcitx5 RPM builds and release publishing are not implemented yet.
+      # This workflow still validates the toolchain only; actual RPM builds
+      # and GitHub Release publishing must be implemented in a later stage.
