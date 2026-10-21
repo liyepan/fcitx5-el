@@ -49,7 +49,7 @@ jobs:
             dnf-plugins-core epel-release
           dnf -y --setopt=timeout=30 --setopt=retries=3 install \
             mock rpm-build rpmdevtools createrepo_c git jq tar gzip \
-            findutils diffutils coreutils
+            findutils diffutils
           mock --version
           rpmbuild --version
 
